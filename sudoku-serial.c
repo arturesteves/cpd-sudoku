@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <omp.h>
 
 typedef int bool;
@@ -15,16 +16,25 @@ struct Puzzle {
 typedef struct Puzzle Puzzle;
 
 
-void print_puzzle(Puzzle * puzzle){
+/**
+* Print the puzzle matrix.
+* @param puzzle Sudoku puzzle data structure.
+*/
+void print_puzzle(FILE * file,Puzzle * puzzle){
 	int n = puzzle->n;
 	for (int i = 0; i < n; ++i){
 		for (int j = 0; j < n; ++j){
-			printf("%d ", puzzle->matrix[i][j]);
+			fprintf(file,"%d ", puzzle->matrix[i][j]);
 		}
-		printf("\n");
+		fprintf(file,"\n");
 	}
 }
 
+
+/**
+* Check if number is already in a sub grid of the puzzle matrix.
+* @return Returns true if the number is inside one of the sub-grids of the matrix.
+*/
 bool check_grid(Puzzle * puzzle, int row, int col, int num){
 	for (int i = 0; i < puzzle->root_n; ++i){
 		for (int j = 0; j < puzzle->root_n; ++j){
@@ -38,13 +48,11 @@ bool check_grid(Puzzle * puzzle, int row, int col, int num){
 
 /**
 * Check if a number is already in a column.
-* @param n Number of rows.
-* @param puzzle Sudoku puzzle matrix.
+* @param puzzle Sudoku puzzle data structure.
 * @param col Column.
 * @param num Comparison value.
 * @return Returns true if the number is in the column.
 */
-
 bool check_column(Puzzle * puzzle, int col, int num){
 	for (int i = 0; i < puzzle->n; ++i){
 		if(puzzle->matrix[i][col] == num){
@@ -56,13 +64,11 @@ bool check_column(Puzzle * puzzle, int col, int num){
 
 /**
 * Check if a number is already in a row.
-* @param n Number of columns.
-* @param puzzle Sudoku puzzle matrix.
+* @param puzzle Sudoku puzzle data structure.
 * @param row Row.
 * @param num Comparison value.
 * @return Returns true if the number is in the row.
 */
-
 bool check_row(Puzzle * puzzle, int row, int num){
 	for (int i = 0; i < puzzle->n; ++i){
 		if (puzzle->matrix[row][i] == num){
@@ -73,18 +79,27 @@ bool check_row(Puzzle * puzzle, int row, int num){
 }
 
 
+/**
+* Check if a number is already in a matrix cell according to sudoku rules.
+* @param puzzle Sudoku puzzle data structure.
+* @param row Row.
+* @param col Column.
+* @param num Comparison value.
+* @return Returns true if the number is not valid.
+*/
 bool is_valid(Puzzle * puzzle, int row, int col, int num){
-	return !(check_row(puzzle,row,num)) && !(check_column(puzzle,col,num)) && !check_grid(puzzle, row - row % puzzle->root_n, col - col % puzzle->root_n, num);
+	return !(check_row(puzzle,row,num)) && 
+		   !(check_column(puzzle,col,num)) && 
+		   !(check_grid(puzzle, row - row % puzzle->root_n, col - col % puzzle->root_n, num));
 }
 
 /**
 * Find empty cell in the sudoku.
-*
+* @param puzzle Sudoku puzzle data structure.
 * @param row Row number reference
 * @param col Column number reference
 * @return Returns true if the puzzle has an empty position.
 */
-
 bool find_empty(Puzzle * puzzle, int * row, int * col){
 	for (*row = 0; *row < puzzle->n; (*row)++){
 		for (*col = 0; *col < puzzle->n; (*col)++){
@@ -97,6 +112,11 @@ bool find_empty(Puzzle * puzzle, int * row, int * col){
 }
 
 
+/**
+* Attemp to solve the sudoku puzzle using backtracking.
+* @param puzzle Sudoku puzzle data structure.
+* @return Returns true if the sudoku has a solution.
+*/
 bool solve(Puzzle * puzzle){
 	int row = 0, col = 0;
 
@@ -121,14 +141,16 @@ bool solve(Puzzle * puzzle){
 
 
 	return false;
-
 }
 
 
-int main(int argc, char const *argv[]){
+int main(int argc, char *argv[]){
 	double start = omp_get_wtime();
 
-	FILE * file;
+	FILE * file_input;
+	FILE * file_output;
+
+	char * filename;
 
 	// Check if file path was passed as an argument
 	if (argc > 2){
@@ -139,13 +161,13 @@ int main(int argc, char const *argv[]){
 		exit(EXIT_FAILURE);
 	}
 
+	filename = argv[1];
+
 	// Open file in read mode
-	if ((file = fopen(argv[1],"r")) == NULL){
-		printf("ERROR: Could not open file %s\n",argv[1]);
+	if ((file_input = fopen(filename,"r")) == NULL){
+		printf("ERROR: Could not open file %s\n",filename);
 		exit(EXIT_FAILURE);
 	}
-
-
 
 	// Number of rows and columns
 	int n;
@@ -153,10 +175,12 @@ int main(int argc, char const *argv[]){
 	int root_n;
 
 	// Read first line from the file to get n
-	fscanf(file, "%d\n", &root_n);
+	fscanf(file_input, "%d\n", &root_n);
 
 	n = root_n * root_n;
 
+	// ======================================
+	/** Initialize puzzle data structure */
 
 	// Puzzle matrix N x N
 	Puzzle * puzzle = malloc(sizeof(Puzzle));
@@ -174,31 +198,37 @@ int main(int argc, char const *argv[]){
 	int cursor;
 	int row = 0, col = 0;
 
-	while( (cursor = getc(file)) != EOF ){
-		switch(cursor){
-			case ' ':
-				break;
-			case '\n':
-				row++;
-				col = 0;
-				break;
-			default:
-				puzzle->matrix[row][col] = (cursor - '0');
-				col++;
-				break;
+	for (int i = 0; i < n; ++i){
+		
+		for (int j = 0; j < n; ++j){
+			fscanf(file_input,"%d",&puzzle->matrix[i][j]);
 		}
+		fscanf(file_input, "\n");
 	}
+	// ======================================
 
 	// Close file
-	fclose(file);
-
+	fclose(file_input);
 	
 	if(solve(puzzle)){
-		print_puzzle(puzzle);
+
+		/* Write solution to .out file. */
+		char * name_out;
+		
+		// Split file name
+		filename[strlen(filename) - 3 ] = '\0';
+		name_out = (char *) malloc(sizeof(char) * (strlen(filename) + 4));
+		strcpy(name_out, filename);
+		strcat(name_out, ".out");
+
+		// Open file in write mode
+		file_output = fopen(name_out, "w");
+		print_puzzle(file_output, puzzle);
+		// Close output file
+		fclose(file_output);
 	} else {
 		printf("No solution\n");
 	}
-
 
 	// Free memory
 	for (int i = 0; i <  n ; ++i){
