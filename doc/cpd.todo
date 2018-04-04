@@ -1,0 +1,62 @@
+Serial:
+	gcc -fopenmp -o sudoku-serial sudoku-serial.c
+	
+	.\sudoku-serial.exe .\input\in-0.in
+
+	
+Parallel:
+	gcc -fopenmp -o sudoku-omp sudoku-omp.c
+
+	.\sudoku-omp.exe .\input\in-0.in
+	
+	
+Log:
+	
+	✔	Alteração extensões exemplos para .in @done (quarta-feira 04 abril 2018 - 04/04/2018)
+	✔	Definição comandos de compilação e execução para o prog. serial e em paralelo @done (quarta-feira 04 abril 2018 - 04/04/2018)
+	
+	OMP:
+
+		✔	Leitura ficheiro e escrita ficheiro @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Re-uso da estrutura do puzzle @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Re-uso da função print puzzle to file @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Criado função para imprimir o tabuleiro na consola @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Cópia nova de Puzzle @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Criação da estrutura Task @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Criar função para obter a próxima posição livre num array @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Criar marco para obter o size de um array @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Criar função para fazer free do puzzle (reutilizado da implementacao em série) @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Criar função para libertar um array de puzzles. @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Apresentar lista dos sucessores @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Criar uma lista de tasks e inicializar. @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Criar função para retornar um tabuleiro vazio @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Criar função para retornar uma task vazia @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Criar função insertion sort, onde ao inserir uma tarefa esta é logo ordenada @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		✔	Criar variável global que controla se alguma thread já encontrou a solução (foundSolution) @done (quarta-feira 04 abril 2018 - 04/04/2018)
+		☐	Resolver erros obtidos em compilação
+			☐	Colocar a funcionar a 
+
+		☐	Adaptar priority queue (C code: https://rosettacode.org/wiki/Priority_queue#C) para o nosso problema
+
+
+		☐	Definição de um sistema de fornecer prioridades
+		☐	Inicializar pool de threads (com openmp parallel)
+		☐	criar funcao para obter a prioridade (consoante o nivel onde esta na arvore e o nº do sucesso naquele nivel)
+		☐	Uma Thread é capaz de ir buscar uma tarefa para executar e retira-a da thread.
+		☐	Criar função para verificar se a solução foi encontrada (re-usada a função do serial)
+		☐	Criar procura DFS
+		☐	Ao fim de N - offset a procura é paralelizada 
+
+		- Os sucessores quando sao gerados sao adicionados logo a lista de tasks? ou so depois? mete-se logo na 
+
+		Definição do sistema de atribuição de prioridade.	(folhas do lado esquerdo tem sempre maior prioridade que as do lado direito.)
+
+		Cada nível tem um nível da árvore tem um número associado e depois é feita uma multiplicação por um valor.
+		
+		// se os sucessores estiverem sempre a ser adicionados a mesma lista, podera exceder N * N
+		
+		☐	Indicar como modificar o numero de threads (usando EXPORT)
+
+
+
+		-Falar com o prof do lab sobre a nossa solucao em paralelo e discutir com ele sobre a sua validade, e a validade entre a comparacao da mesma com a implementacao em serie.
