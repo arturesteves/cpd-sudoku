@@ -13,7 +13,7 @@ sudoku-omp: sudoku-omp.c
 	$(CC) -fopenmp -o sudoku-omp sudoku-omp.c
 
 clean:
-	-rm -f output/*.out
+	-rm -f input/*.out
 	-rm -f *.o
 	-rm -f sudoku-serial
 	-rm -f sudoku-omp

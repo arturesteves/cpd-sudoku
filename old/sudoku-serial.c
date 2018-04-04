@@ -15,7 +15,6 @@ struct Puzzle {
 
 typedef struct Puzzle Puzzle;
 
-
 /**
 * Print the puzzle matrix.
 * @param puzzle Sudoku puzzle data structure.
@@ -29,7 +28,6 @@ void print_puzzle(FILE * file,Puzzle * puzzle){
 		fprintf(file,"\n");
 	}
 }
-
 
 /**
 * Check if number is already in a sub grid of the puzzle matrix.
@@ -143,25 +141,42 @@ bool solve(Puzzle * puzzle){
 	return false;
 }
 
+/**
+* Write sudoku solution to .out file in output directory.
+* @param filename Input file path.
+* @param puzzle Sudoku puzzle data structure.
+*/
+void write_file(char * filename, Puzzle * puzzle){
+		FILE * file;
+		/* Write solution to .out file. */
+		char * name_out;
+		char * directory = "output/";
+		char * token;
 
-int main(int argc, char *argv[]){
-	double start = omp_get_wtime();
+		// Split file name
+		filename[strlen(filename) - 3 ] = '\0';
+		token = strtok(filename, "/");
+		token = strtok(NULL, "/");
 
+		name_out = (char*) malloc(sizeof(char) * (strlen(directory) + strlen(token) + 4));
+		strcpy(name_out, directory);
+		strcat(name_out, token);
+		strcat(name_out, ".out");
+
+		// Open file in write mode
+		file = fopen(name_out, "w");
+		print_puzzle(file, puzzle);
+		// Close output file
+		fclose(file);
+}
+
+/**
+* Write sudoku puzzle input from .in file.
+* @param filename Input file path.
+* @return Returns the parsed file information as a Puzzle data structure.
+*/
+Puzzle * read_file(char * filename){
 	FILE * file_input;
-	FILE * file_output;
-
-	char * filename;
-
-	// Check if file path was passed as an argument
-	if (argc > 2){
-		printf("ERROR: Too many arguments.\n");
-		exit(EXIT_FAILURE);
-	} else if (argc < 2) {
-		printf("ERROR: Missing arguments.\n");
-		exit(EXIT_FAILURE);
-	}
-
-	filename = argv[1];
 
 	// Open file in read mode
 	if ((file_input = fopen(filename,"r")) == NULL){
@@ -176,11 +191,7 @@ int main(int argc, char *argv[]){
 
 	// Read first line from the file to get n
 	fscanf(file_input, "%d\n", &root_n);
-
 	n = root_n * root_n;
-
-	// ======================================
-	/** Initialize puzzle data structure */
 
 	// Puzzle matrix N x N
 	Puzzle * puzzle = malloc(sizeof(Puzzle));
@@ -193,7 +204,6 @@ int main(int argc, char *argv[]){
 		puzzle->matrix[i] = (int * )malloc(n * sizeof(int));
 	}
 
-
 	// Read matrix from the file
 	int cursor;
 	int row = 0, col = 0;
@@ -205,40 +215,53 @@ int main(int argc, char *argv[]){
 		}
 		fscanf(file_input, "\n");
 	}
-	// ======================================
 
 	// Close file
 	fclose(file_input);
-	
-	if(solve(puzzle)){
 
-		/* Write solution to .out file. */
-		char * name_out;
-		
-		// Split file name
-		filename[strlen(filename) - 3 ] = '\0';
-		name_out = (char *) malloc(sizeof(char) * (strlen(filename) + 4));
-		strcpy(name_out, filename);
-		strcat(name_out, "serial.out");
+	return puzzle;
+}
 
-		// Open file in write mode
-		file_output = fopen(name_out, "w");
-		print_puzzle(file_output, puzzle);
-		// Close output file
-		fclose(file_output);
-	} else {
-		printf("No solution\n");
-	}
-
+/**
+* Free memory of Puzzle data structure.
+* @param puzzle Sudoku puzzle data structure.
+*/
+void free_puzzle(Puzzle * puzzle){
 	// Free memory
-	for (int i = 0; i <  n ; ++i){
+	for (int i = 0; i <  puzzle->n ; ++i){
 		free(puzzle->matrix[i]);
 	}
 	
 	free(puzzle->matrix);
 	free(puzzle);
+}
+
+int main(int argc, char *argv[]){
+	double start = omp_get_wtime();
+
+	FILE * file_input;
+	Puzzle * puzzle;
+
+	// Check if file path was passed as an argument
+	if (argc > 2){
+		printf("ERROR: Too many arguments.\n");
+		exit(EXIT_FAILURE);
+	} else if (argc < 2) {
+		printf("ERROR: Missing arguments.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	puzzle = read_file(argv[1]);
+
+	if(solve(puzzle)){
+		write_file(argv[1], puzzle);
+	} else {
+		printf("No solution\n");
+	}
+
+	free_puzzle(puzzle);
 
 	double end = omp_get_wtime();
-	printf("Elapsed time: %f (s)\n", end - start);
+	printf("\tElapsed time: %f (s)\n", end - start);
 	return EXIT_SUCCESS;
 }
