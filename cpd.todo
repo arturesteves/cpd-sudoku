@@ -33,11 +33,11 @@ Log:
 		✔	Criar função para retornar uma task vazia @done (quarta-feira 04 abril 2018 - 04/04/2018)
 		✔	Criar função insertion sort, onde ao inserir uma tarefa esta é logo ordenada @done (quarta-feira 04 abril 2018 - 04/04/2018)
 		✔	Criar variável global que controla se alguma thread já encontrou a solução (foundSolution) @done (quarta-feira 04 abril 2018 - 04/04/2018)
-		☐	Resolver erros obtidos em compilação
-			☐	Colocar a funcionar a 
-
-		☐	Adaptar priority queue (C code: https://rosettacode.org/wiki/Priority_queue#C) para o nosso problema
-
+    ✔  Resolver erros obtidos em compilação @done (quarta-feira 04 abril 2018 - 04/04/2018)
+    ✔ Alterar e testar a função para gerar os sucessores. @done (quarta-feira 04 abril 2018 - 04/04/2018)
+    ✔ Modificar o copy para também copiar o novo atributo de depth @done (quarta-feira 04 abril 2018 - 04/04/2018)
+    ✔  Adaptar priority queue (C code: https://rosettacode.org/wiki/Priority_queue#C) para o nosso problema @done (quarta-feira 04 abril 2018 - 04/04/2018)
+    ☐ Testar a ordem da priority queue 
 
 		☐	Definição de um sistema de fornecer prioridades
 		☐	Inicializar pool de threads (com openmp parallel)

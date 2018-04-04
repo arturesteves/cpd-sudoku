@@ -33,9 +33,9 @@ typedef struct {
     Task *tasks;
     int len;
     int size;
-} heap_t;
+} Queue;
  
-void push (heap_t *h, long double priority, Puzzle * puzzle) {
+void push (Queue *h, long double priority, Puzzle * puzzle) {
     #pragma omp critical 
     {
         if (h->len + 1 >= h->size) {
@@ -55,7 +55,7 @@ void push (heap_t *h, long double priority, Puzzle * puzzle) {
     }
 }
  
-Puzzle *pop (heap_t *h) {
+Puzzle *pop (Queue *h) {
     Puzzle *puzzle;
     #pragma omp critical 
     {
@@ -94,7 +94,9 @@ Puzzle *pop (heap_t *h) {
     }
     return puzzle;
 }
- 
+
+
+// code based on: https://rosettacode.org/wiki/Priority_queue#C
 // int main () {
 //     heap_t *h = (heap_t *)calloc(1, sizeof (heap_t));
 //     push(h, 3, "Clear drains");
@@ -109,6 +111,11 @@ Puzzle *pop (heap_t *h) {
 //     return 0;
 // }
 
+///////////////////////////////////////////////////////////
+//// Priority Queue
+///////////////////////////////////////////////////////////
+
+
 
 
 
@@ -116,7 +123,11 @@ Puzzle *pop (heap_t *h) {
 ///////////////////////////////////////////////////////////
 //// Global Variables
 ///////////////////////////////////////////////////////////
-bool solutionFound = false; // no solution found at the beginning
+
+bool solution_found = false; // no solution found at the beginning
+Queue * queue = (Queue *) calloc(1, sizeof (Queue));
+
+
 
 
 /**
@@ -174,6 +185,7 @@ void debug_sucessors(Puzzle * sucessorsArr) {
 
 // size: N of the matrix, the number is the number of the succesor
 // int size,
+// todo
 int getPriority(int size, int number, int level) {
     if (level == 0) {
         return 0;
@@ -221,6 +233,7 @@ Puzzle * copy(Puzzle * puzzle) {
         return NULL;
     }
     Puzzle * copyPuzzle = malloc(sizeof(Puzzle));
+    copyPuzzle->depth = puzzle->depth;
     copyPuzzle->root_n = puzzle->root_n;
     copyPuzzle->n = puzzle->n;
     copyPuzzle->matrix = (int**) malloc(puzzle->n * sizeof(int*));          // alloc space for matrix
@@ -259,32 +272,7 @@ void cleanPuzzle (Puzzle * puzzle) {
     }
 }
 
-// return array with sucessors
-bool generateSucessors(Puzzle * puzzle) {
-    Puzzle ** sucessorsArr = malloc(puzzle->n * sizeof(Puzzle *));
-    int n = puzzle->n;
-    int pos, i, j;
-    Puzzle * state;
-    for(i = 0; i < n; i++) {
-        for(j = 0; j < n; j++) {
-            state = copy (puzzle);
-            if(state->matrix[i][j] == 0) {
-                // empty position
-                state->matrix[i][j] = i;
-                pos = getAvailablePosition (sucessorsArr);
-                if (pos != -1) {
-                    sucessorsArr[pos] = state;
-                }
-            }
-            cleanPuzzle(state); // free memory
-        }
-    }
-    
-    //todo return whether there were any successor generated.
-    return true;
-}
-
-int getAvailablePosition(Puzzle * arr){
+int getAvailablePosition(Puzzle ** arr){
     int n = NELEMS(arr);
     int i;
     for(i = 0; i < n; i++){
@@ -295,22 +283,61 @@ int getAvailablePosition(Puzzle * arr){
    return -1;
 }
 
-/*
-createEmptyPuzzle (Puzzle puzzle) {
-    //Puzzle * puzzle = malloc(sizeof(Puzzle));
-    puzzle.root_n = 0;
-    puzzle.n = 0;
-    puzzle->matrix = NULL;//(int**) malloc(sizeof(int*));          // alloc space for matrix
-    //return puzzle;
+
+/**
+* Find empty cell in the sudoku.
+* @param puzzle Sudoku puzzle data structure.
+* @param row Row number reference
+* @param col Column number reference
+* @return Returns true if the puzzle has an empty position.
+*/
+bool find_empty(Puzzle * puzzle, int * row, int * col){
+	for (*row = 0; *row < puzzle->n; (*row)++){
+		for (*col = 0; *col < puzzle->n; (*col)++){
+			if (puzzle->matrix[*row][*col] == 0){
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
-Task * createEmptyTask(Task task) {
-    //Task * task = malloc(sizeof(Task));
-    task->priority = 0;
-    task->puzzle = NULL; // (int*) malloc (sizeof(int));  // incompatible point
-    return task;
+// return array with sucessors
+bool generateSucessors(Puzzle * puzzle) {
+    
+    int n = puzzle->n;
+    int pos, row, col, i; 
+    bool hasSucessors = false;
+
+    find_empty(puzzle, &row, &col);
+
+    for(i = 1; i <= n; i++) {
+        Puzzle * sucessor = copy (puzzle);
+        sucessor->matrix[row][col] = i;
+        puzzle->depth 
+
+        push(queue, 1, sucessor);     // add task to priority queue. // replace 1 by getPriority (state, ...)
+        debug_puzzle (sucessor);
+    }
+
+    return hasSucessors;
 }
+
+
+/**
+* Check if a number is already in a matrix cell according to sudoku rules.
+* @param puzzle Sudoku puzzle data structure.
+* @param row Row.
+* @param col Column.
+* @param num Comparison value.
+* @return Returns true if the number is not valid.
 */
+bool is_valid(Puzzle * puzzle, int row, int col, int num){
+	return !(check_row(puzzle,row,num)) && 
+		   !(check_column(puzzle,col,num)) && 
+		   !(check_grid(puzzle, row - row % puzzle->root_n, col - col % puzzle->root_n, num));
+}
+
 
 int main(int argc, char *argv[]){
 	double start = omp_get_wtime();
@@ -381,51 +408,27 @@ int main(int argc, char *argv[]){
     //////////////////////////////////////////////////////////
     ////// START
     //////////////////////////////////////////////////////////
-
-    Puzzle * copyPuzzle = copy (puzzle);
-    if (copyPuzzle == NULL) {
-        printf ("ERROR.");
-        return -1;
-    }
-    printf ("Copy with success.\n");
-    debug_puzzle (puzzle);
-    debug_puzzle (copyPuzzle);
-    copyPuzzle->matrix[0][0] = 2;
-    debug_puzzle (puzzle);
-    debug_puzzle (copyPuzzle);
-
-
-    printf("\n\nRoot State:\n");
-    debug_puzzle(puzzle);
-
-
-    // init array of sucessors and array of \s
-        
-    //generateSucessors(puzzle);
     
-    //todo - create the priority queue
-    ///
+    push(queue, 1, puzzle);
+
+    
     
     #pragma omp parallel 
     {
-        bool done = false;
         do 
         {
-            Puzzle * puzzle;// = pop(PQ);        
+            Puzzle * puzzle = pop(queue);
+            if(puzzle != NULL) {
+
+                if(is_valid(puzzle)) {
+                    //todo - return without returning
+                    solution_found = generateSucessors(puzzle);
+                }
+            }   
             
-            //todo - copy function from old project
-            /*
-            if(isValid(tabuleiro)) {
-                //todo - return without returning
-            }
-            */
-            
-            done = generateSucessors(puzzle);
-            
-        } while(!done);
+        } while(!solution_found);
         
         printf("Done");
-        
     }
     
     
@@ -471,14 +474,6 @@ int main(int argc, char *argv[]){
 	}
 
     */
-
-	// Free memory
-	for (i = 0; i <  n ; ++i){
-		free(puzzle->matrix[i]);
-	}
-	
-	free(puzzle->matrix);
-	free(puzzle);
 
 	double end = omp_get_wtime();
 	printf("Elapsed time: %f (s)\n", end - start);
