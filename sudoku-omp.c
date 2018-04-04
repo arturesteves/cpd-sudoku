@@ -11,17 +11,106 @@ typedef int bool;
 #define true 1
 
 struct Puzzle {
+    int depth;
 	int root_n;
 	int n;
 	int ** matrix;
 };
 typedef struct Puzzle Puzzle;
 
-struct Task {
-	int priority;
-	Puzzle * puzzle;
-};
-typedef struct Task Task;
+
+
+///////////////////////////////////////////////////////////
+//// Priority Queue
+///////////////////////////////////////////////////////////
+ 
+typedef struct {
+    long double priority;
+    Puzzle * puzzle;
+} Task;
+ 
+typedef struct {
+    Task *tasks;
+    int len;
+    int size;
+} heap_t;
+ 
+void push (heap_t *h, long double priority, Puzzle * puzzle) {
+    #pragma omp critical 
+    {
+        if (h->len + 1 >= h->size) {
+            h->size = h->size ? h->size * 2 : 4;
+            h->tasks = (Task *)realloc(h->tasks, h->size * sizeof (Task));
+        }
+        int i = h->len + 1;
+        int j = i / 2;
+        while (i > 1 && h->tasks[j].priority > priority) {
+            h->tasks[i] = h->tasks[j];
+            i = j;
+            j = j / 2;
+        }
+        h->tasks[i].priority = priority;
+        h->tasks[i].puzzle = puzzle;
+        h->len++;
+    }
+}
+ 
+Puzzle *pop (heap_t *h) {
+    Puzzle *puzzle;
+    #pragma omp critical 
+    {
+        int i, j, k;
+        
+        if (!h->len) {
+            puzzle = NULL;
+        }
+        else {
+            Puzzle *puzzle = h->tasks[1].puzzle;
+         
+            h->tasks[1] = h->tasks[h->len];
+            long double priority = h->tasks[1].priority;
+         
+            h->len--;
+         
+            i = 1;
+            while (1) {
+                k = i;
+                j = 2 * i;
+                if (j <= h->len && h->tasks[j].priority < priority) {
+                    k = j;
+                }
+                if (j + 1 <= h->len && h->tasks[j + 1].priority < h->tasks[k].priority) {
+                    k = j + 1;
+                }
+                if (k == i) {
+                    break;
+                }
+                h->tasks[i] = h->tasks[k];
+                i = k;
+            }
+            h->tasks[i] = h->tasks[h->len + 1];
+        }
+
+    }
+    return puzzle;
+}
+ 
+// int main () {
+//     heap_t *h = (heap_t *)calloc(1, sizeof (heap_t));
+//     push(h, 3, "Clear drains");
+//     push(h, 4, "Feed cat");
+//     push(h, 5, "Make tea");
+//     push(h, 1, "Solve RC tasks");
+//     push(h, 2, "Tax return");
+//     int i;
+//     for (i = 0; i < 5; i++) {
+//         printf("%s\n", pop(h));
+//     }
+//     return 0;
+// }
+
+
+
 
 
 ///////////////////////////////////////////////////////////
@@ -36,8 +125,9 @@ bool solutionFound = false; // no solution found at the beginning
 */
 void print_puzzle(FILE * file,Puzzle * puzzle){
 	int n = puzzle->n;
-	for (int i = 0; i < n; ++i){
-		for (int j = 0; j < n; ++j){
+	int i,j;
+	for (i = 0; i < n; ++i){
+		for (j = 0; j < n; ++j){
 			fprintf(file,"%d ", puzzle->matrix[i][j]);
 		}
 		fprintf(file,"\n");
@@ -61,8 +151,9 @@ void debug_puzzle(Puzzle * puzzle){
     printf("%s\n",buffer);
     printf("Puzzle:\n");
     printf("%s\n",buffer);
-	for (int i = 0; i < n; ++i){
-		for (int j = 0; j < n; ++j){
+	int i, j;
+	for (i = 0; i < n; ++i){
+		for (j = 0; j < n; ++j){
 			printf("%d ", puzzle->matrix[i][j]);
 		}
 		printf("\n");
@@ -72,7 +163,8 @@ void debug_puzzle(Puzzle * puzzle){
 
 void debug_sucessors(Puzzle * sucessorsArr) {
     int n = NELEMS(sucessorsArr);
-    for (int i = 0; i < n; ++i){
+    int i;
+    for (i = 0; i < n; ++i){
   //      if ((sucessorsArr[i])->n == 0) {  // check if sucessor was initialized with usefull values.
             //debug_puzzle(sucessorsArr[i]);
     //    }
@@ -88,7 +180,8 @@ int getPriority(int size, int number, int level) {
     } else {
         int p;
         // ainda nao e isto.
-        for (int i = 0; i < level; i++) {
+        int i;
+        for (i = 0; i < level; i++) {
             p += size * number;
         }
         return p - level;
@@ -96,6 +189,7 @@ int getPriority(int size, int number, int level) {
 }
 
 
+/*
 //todo: inserir mtual exclusiob
 void insertionSort(Task * tasksArr, Task * task) {
   //#pragma omp critical {
@@ -119,10 +213,8 @@ void insertionSort(Task * tasksArr, Task * task) {
     }
   //}
 }
+*/
 
-Task * retriveHighestPriorityTask (Task * tasksArr) {
-    // retira a task com exclusao mutua e faz um shift de todo o array para o lado esquerdo
-}
 
 Puzzle * copy(Puzzle * puzzle) {
     if (puzzle == NULL) {
@@ -132,10 +224,11 @@ Puzzle * copy(Puzzle * puzzle) {
     copyPuzzle->root_n = puzzle->root_n;
     copyPuzzle->n = puzzle->n;
     copyPuzzle->matrix = (int**) malloc(puzzle->n * sizeof(int*));          // alloc space for matrix
+    int i,j;
     // manual copy
-	for (int i = 0; i < puzzle->n; ++i){
+	for (i = 0; i < puzzle->n; ++i){
         copyPuzzle->matrix[i] = (int * )malloc(puzzle->n * sizeof(int));    // alloc space
-        for (int j = 0; j < puzzle->n; ++j){
+        for (j = 0; j < puzzle->n; ++j){
             copyPuzzle->matrix[i][j] = puzzle->matrix[i][j];                // copy values
         }
 	}
@@ -145,8 +238,9 @@ Puzzle * copy(Puzzle * puzzle) {
 
 void cleanPuzzleArr (Puzzle * puzzlesArr) {
     int n = NELEMS(puzzlesArr);
+    int i;
   	// Free memory   
-	for (int i = 0; i <  n ; i++){
+	for (i = 0; i <  n ; i++){
 		//cleanPuzzle(puzzlesArr[i]);
 	}
     free (puzzlesArr);
@@ -155,8 +249,9 @@ void cleanPuzzleArr (Puzzle * puzzlesArr) {
 void cleanPuzzle (Puzzle * puzzle) {
     if (puzzle != NULL) {
         int n = puzzle->n;
+        int i;
         // Free memory   
-        for (int i = 0; i <  n ; i++){
+        for (i = 0; i <  n ; i++){
             free(puzzle->matrix[i]);
         }
         free(puzzle->matrix);
@@ -164,30 +259,35 @@ void cleanPuzzle (Puzzle * puzzle) {
     }
 }
 
-// return array with sucesors
-void generateSucessors(Puzzle * puzzle, Puzzle * sucessorsArr) {
+// return array with sucessors
+bool generateSucessors(Puzzle * puzzle) {
+    Puzzle ** sucessorsArr = malloc(puzzle->n * sizeof(Puzzle *));
     int n = puzzle->n;
-    int pos;
-    Puzzle state;
-    for(int i = 0; i < n; i++) {
-       // state = copy (puzzle);  
-        for(int j = 0; j < n; j++) {
-            //if(state->matrix[i][j] == 0) {
+    int pos, i, j;
+    Puzzle * state;
+    for(i = 0; i < n; i++) {
+        for(j = 0; j < n; j++) {
+            state = copy (puzzle);
+            if(state->matrix[i][j] == 0) {
                 // empty position
-                //state->matrix[i][j] = i;
-                //pos = getAvailablePosition (sucessorsArr);
+                state->matrix[i][j] = i;
+                pos = getAvailablePosition (sucessorsArr);
                 if (pos != -1) {
                     sucessorsArr[pos] = state;
                 }
-                //cleanPuzzle(state); // free memory
-            //}
+            }
+            cleanPuzzle(state); // free memory
         }
     }
+    
+    //todo return whether there were any successor generated.
+    return true;
 }
 
 int getAvailablePosition(Puzzle * arr){
     int n = NELEMS(arr);
-    for(int i = 0; i < n; i++){
+    int i;
+    for(i = 0; i < n; i++){
         //if(arr[i] == NULL) {
             return i;
         //}
@@ -195,12 +295,13 @@ int getAvailablePosition(Puzzle * arr){
    return -1;
 }
 
-Puzzle * createEmptyPuzzle (Puzzle puzzle) {
+/*
+createEmptyPuzzle (Puzzle puzzle) {
     //Puzzle * puzzle = malloc(sizeof(Puzzle));
-    puzzle->root_n = 0;
-    puzzle->n = 0;
+    puzzle.root_n = 0;
+    puzzle.n = 0;
     puzzle->matrix = NULL;//(int**) malloc(sizeof(int*));          // alloc space for matrix
-    return puzzle;
+    //return puzzle;
 }
 
 Task * createEmptyTask(Task task) {
@@ -209,6 +310,7 @@ Task * createEmptyTask(Task task) {
     task->puzzle = NULL; // (int*) malloc (sizeof(int));  // incompatible point
     return task;
 }
+*/
 
 int main(int argc, char *argv[]){
 	double start = omp_get_wtime();
@@ -254,19 +356,18 @@ int main(int argc, char *argv[]){
 	puzzle->root_n = root_n;
 
 	puzzle->matrix = (int**) malloc(n * sizeof(int*));
-
-	for (int i = 0; i < n; ++i){
+    int i;
+	for (i = 0; i < n; ++i){
 		puzzle->matrix[i] = (int * )malloc(n * sizeof(int));
 	}
 
 
 	// Read matrix from the file
 	int cursor;
-	int row = 0, col = 0;
-
-	for (int i = 0; i < n; ++i){
+	int row = 0, col = 0, j;
+	for (i = 0; i < n; ++i){
 		
-		for (int j = 0; j < n; ++j){
+		for (j = 0; j < n; ++j){
 			fscanf(file_input,"%d",&puzzle->matrix[i][j]);
 		}
 		fscanf(file_input, "\n");
@@ -299,13 +400,43 @@ int main(int argc, char *argv[]){
 
 
     // init array of sucessors and array of \s
-    Puzzle * sucessorsArr = malloc(n * sizeof(Puzzle));
-    //Task * tasksArr = malloc(size * sizeof(Task));
-    for (int i = 0; i < size; i++) {
-        createEmptyPuzzle(sucessorsArr[i]);
-    //    createEmptyTask(&tasksArr[i]);
-        //tasksArr[i] = createEmptyTask();
+        
+    //generateSucessors(puzzle);
+    
+    //todo - create the priority queue
+    ///
+    
+    #pragma omp parallel 
+    {
+        bool done = false;
+        do 
+        {
+            Puzzle * puzzle;// = pop(PQ);        
+            
+            //todo - copy function from old project
+            /*
+            if(isValid(tabuleiro)) {
+                //todo - return without returning
+            }
+            */
+            
+            done = generateSucessors(puzzle);
+            
+        } while(!done);
+        
+        printf("Done");
+        
     }
+    
+    
+    
+    
+    //Task * tasksArr = malloc(size * sizeof(Task));
+    //for (i = 0; i < n; i++) {
+        //sucessorsArr[i] = createEmptyPuzzle(sucessorsArr[i]);
+        //    createEmptyTask(&tasksArr[i]);
+        //tasksArr[i] = createEmptyTask();
+    //}
     
     //generateSucessors (puzzle, sucessorsArr);
     
@@ -317,7 +448,7 @@ int main(int argc, char *argv[]){
     //////////////////////////////////////////////////////////
     ////// END
     //////////////////////////////////////////////////////////
-
+    
     /*
 	if(solve(puzzle)){
 
@@ -342,7 +473,7 @@ int main(int argc, char *argv[]){
     */
 
 	// Free memory
-	for (int i = 0; i <  n ; ++i){
+	for (i = 0; i <  n ; ++i){
 		free(puzzle->matrix[i]);
 	}
 	

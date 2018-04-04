@@ -219,7 +219,7 @@ int main(int argc, char *argv[]){
 		filename[strlen(filename) - 3 ] = '\0';
 		name_out = (char *) malloc(sizeof(char) * (strlen(filename) + 4));
 		strcpy(name_out, filename);
-		strcat(name_out, "serial.out");
+		strcat(name_out, ".out");
 
 		// Open file in write mode
 		file_output = fopen(name_out, "w");
