@@ -127,16 +127,19 @@ bool solve(Puzzle * puzzle){
 
 		// Check if number can be placed in a cell
 		if (is_valid(puzzle, row, col, i)){
+			
 			puzzle->matrix[row][col] = i;
-
+			printf("Here\n");
 			if (solve(puzzle)){
+				printf("Valid (%d, %d)\n", row, col);
 				return true;
 			}
-
+			
+			printf("Valid (%d, %d)\n", row, col);
 			puzzle->matrix[row][col] = 0;
 		}
 	}
-
+	
 
 	return false;
 }
@@ -252,8 +255,13 @@ int main(int argc, char *argv[]){
 	}
 
 	puzzle = read_file(argv[1]);
+	
+	printf("Puzzle N: %d\n", puzzle->n);
+	printf("File read was successful\n");
+	
 
 	if(solve(puzzle)){
+		printf("Done");
 		write_file(argv[1], puzzle);
 	} else {
 		printf("No solution\n");
