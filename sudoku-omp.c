@@ -369,7 +369,7 @@ void solve(Puzzle * puzzle) {
                 //printf("%d %d %d %d %d\n", puzzle->depth, row, col, puzzle->matrix[row][col], isValid);
                 
                 if(puzzle->depth == 1 || isValid) {
-                    //debug_puzzle(puzzle);
+                    debug_puzzle(puzzle);
                     bool hasSucessors = generateSucessors(puzzle);
                     //This is necessary because we can't assign a false to solution_found concurrently
                     if(!hasSucessors) {
@@ -445,8 +445,6 @@ int main(int argc, char *argv[]){
 	puzzle->n = n;
 	puzzle->root_n = root_n;
 	puzzle->depth = 1;
-	puzzle->row = 0;
-	puzzle->col = 0;
 	puzzle->priority = 0;
 	puzzle->matrix = (int**) malloc(n * sizeof(int*));
     int i;
@@ -473,7 +471,7 @@ int main(int argc, char *argv[]){
     //////////////////////////////////////////////////////////
     ////// START
     //////////////////////////////////////////////////////////
-    omp_set_num_threads(8);
+    
     solve(puzzle);    
     
     
