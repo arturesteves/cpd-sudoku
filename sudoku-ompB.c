@@ -15,35 +15,13 @@ struct Puzzle {
 
 typedef struct Puzzle Puzzle;
 
+/////////////////////////////////////////////////////
+// Global
+/////////////////////////////////////////////////////
+bool solved = false;
 
-/**
-* Print the puzzle matrix.
-* @param puzzle A pointer to a Sudoku puzzle data structure.
-*/
-void debug_puzzle(Puzzle * puzzle){
-    #pragma omp critical 
-    {
-        if (puzzle != NULL) {
-            int n = puzzle->n;
-            int slots = (n + n - 1);
-            char buffer[slots + 1];
-            memset(buffer, '-', slots);    // init all positions with '-'
-            buffer[slots] = '\0';          // define end of string
-            printf("%s\n",buffer);
-            printf("Puzzle:\n"); 
-            //printf("-priority: %Lf\n", puzzle->priority);
-            printf("%s\n",buffer);
-            int i, j;
-            for (i = 0; i < n; ++i){
-                for (j = 0; j < n; ++j){
-                    printf("%d ", puzzle->matrix[i][j]);
-                }
-                printf("\n");
-            }
-            printf("%s\n",buffer);
-        }
-    }
-}
+
+
 
 /**
 * Print the puzzle matrix.
@@ -140,12 +118,61 @@ bool find_empty(Puzzle * puzzle, int * row, int * col){
 	return false;
 }
 
+Puzzle * copy(Puzzle * puzzle) {
+    if (puzzle == NULL) {
+        return NULL;
+    }
+    Puzzle * copyPuzzle = malloc(sizeof(Puzzle));
+    copyPuzzle->root_n = puzzle->root_n;
+    copyPuzzle->n = puzzle->n;
+    copyPuzzle->matrix = (int**) malloc(puzzle->n * sizeof(int*));          // alloc space for matrix
+    int i,j;
+    // manual copy
+    for (i = 0; i < puzzle->n; ++i){
+        copyPuzzle->matrix[i] = (int * )malloc(puzzle->n * sizeof(int));    // alloc space
+        for (j = 0; j < puzzle->n; ++j){
+            copyPuzzle->matrix[i][j] = puzzle->matrix[i][j];                // copy values
+        }
+    }
+    return copyPuzzle;
+}
+
+/**
+* Print the puzzle matrix.
+* @param puzzle A pointer to a Sudoku puzzle data structure.
+*/
+void debug_puzzle(Puzzle * puzzle){
+    #pragma omp critical 
+    {
+        if (puzzle != NULL) {
+            int n = puzzle->n;
+            int slots = (n + n - 1);
+            char buffer[slots + 1];
+            memset(buffer, '-', slots);    // init all positions with '-'
+            buffer[slots] = '\0';          // define end of string
+            printf("%s\n",buffer);
+            printf("Puzzle:\n"); 
+            //printf("-priority: %Lf\n", puzzle->priority);
+            printf("%s\n",buffer);
+            int i, j;
+            for (i = 0; i < n; ++i){
+                for (j = 0; j < n; ++j){
+                    printf("%d ", puzzle->matrix[i][j]);
+                }
+                printf("\n");
+            }
+            printf("%s\n",buffer);
+        }
+    }
+}
+
 
 /**
 * Attemp to solve the sudoku puzzle using backtracking.
 * @param puzzle Sudoku puzzle data structure.
 * @return Returns true if the sudoku has a solution.
 */
+/*
 bool solve(Puzzle * puzzle){
 	int row = 0, col = 0;
 
@@ -171,7 +198,60 @@ bool solve(Puzzle * puzzle){
 
 	return false;
 }
+*/
 
+bool solveAux (Puzzle * puzzle) {
+    if(!solved) {
+        int row = 0, col = 0;
+
+        // Check if puzzle is complete
+        if (!find_empty(puzzle, &row, &col)){
+            solved = true;
+            return true;
+        }
+
+        for (int i = 1; i <= puzzle->n; ++i){
+
+            // Check if number can be placed in a cell
+            if (is_valid(puzzle, row, col, i)){
+                puzzle->matrix[row][col] = i;
+
+                if (solveAux(puzzle)){
+                    return true;
+                }
+
+                puzzle->matrix[row][col] = 0;
+            }
+        }
+    }
+    return false;
+}
+//experimenta
+//está com undefined behaviour.
+// talvez seja porque estao todas a usar o mesmo tabuleiro, ..m, é capaz, não está a fazer copia neste codigo pois nao? nao
+//entao nao admira
+
+bool solve(Puzzle * puzzle){
+    int row = 0, col = 0;
+    //volatile bool solved=false;
+    #pragma omp parallel for    // nao sei se eisto funciona
+    for (int i = 1; i <= puzzle->n; ++i){
+        Puzzle * copyPuzzle = copy (puzzle);
+         debug_puzzle(copyPuzzle);
+        if(solved) continue;
+        // Check if number can be placed in a cell
+        if (is_valid(copyPuzzle, row, col, i)){
+            copyPuzzle->matrix[row][col] = i;
+            if (solveAux(copyPuzzle)){
+                //solved = true;
+                printf("\n-----SOLUTION-----");
+                debug_puzzle(copyPuzzle);
+            }
+        }
+        
+    }
+    return solved;
+}
 
 int main(int argc, char *argv[]){
 	double start = omp_get_wtime();
@@ -239,6 +319,8 @@ int main(int argc, char *argv[]){
 	// Close file
 	fclose(file_input);
 	
+    omp_set_num_threads(8); 
+
 	if(solve(puzzle)){
 
 		/* Write solution to .out file. */
@@ -255,8 +337,6 @@ int main(int argc, char *argv[]){
 		print_puzzle(file_output, puzzle);
 		// Close output file
 		fclose(file_output);
-
-        debug_puzzle(puzzle);
 	} else {
 		printf("No solution\n");
 	}
