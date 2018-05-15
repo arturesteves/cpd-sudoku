@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <omp.h>
 
 
 ////////////////////////////////////////////////////////////
@@ -36,8 +35,6 @@ typedef int bool;
 ////////////////////////////////////////////////////////////
 static double _start_;
 static double _end_;
-static bool _time_flag_ = false;
-static bool _time_only_flag_ = false;
 static int _states_searched_ = 0;
 
 ////////////////////////////////////////////////////////////
@@ -67,7 +64,6 @@ void end_on_solution_found(Puzzle * puzzle);
  */
 int main(int argc, char *argv[]){
     // starts counter
-	_start_ = omp_get_wtime();
 
 	FILE * file_input;
 	FILE * file_output;
@@ -75,19 +71,10 @@ int main(int argc, char *argv[]){
 	char * filename;
 
 	// Check if file path was passed as an argument
-	if (argc > 4){
+	if (argc > 2){
 		printf("ERROR: Too many arguments.\n");
 		exit(EXIT_FAILURE);
-	} else if (argc < 2) {
-		printf("ERROR: Missing arguments.\n");
-		exit(EXIT_FAILURE);
-	} else if(argc == 3 && strcmp(argv[2], "-to") == 0) {
-        _time_only_flag_ = true;
-    } else if(argc == 3 && strcmp(argv[2], "-t") == 0) {
-        _time_flag_ = true;
-    }  else if(argc > 3 && (strcmp(argv[2], "-to") == 0 || strcmp(argv[3], "-to") == 0)) {
-        _time_only_flag_ = true;
-    } 
+	} 
 
 	filename = argv[1];
 
@@ -158,17 +145,7 @@ int main(int argc, char *argv[]){
         end_on_solution_found(puzzle);
 
 	} else {
-        // if no solution was found
-        _end_ = omp_get_wtime();
-        if (_time_only_flag_) {
-            printf("Elapsed time: %f (s)\n", _end_ - _start_);
-        } else if (_time_flag_) {
-            printf("No solution\n");
-            printf("Searched %d states in total.\n", _states_searched_);
-            printf("Elapsed time: %f (s)\n", _end_ - _start_);
-        } else {
-            printf("No solution\n");
-        }
+		printf("No solution\n");
 	}
 
     // ======================================
@@ -352,15 +329,6 @@ bool solve(Puzzle * puzzle){
  * @param puzzle Sudoku puzzle data structure.
  */
 void end_on_solution_found(Puzzle * puzzle) {
-    _end_ = omp_get_wtime();
-    if (_time_only_flag_) {
-        printf("Elapsed time: %f (s)\n", _end_ - _start_);
-    } else if (_time_flag_) {
-        debug_puzzle(puzzle);
-        printf("Searched %d states in total.\n", _states_searched_);
-        printf("Elapsed time: %f (s)\n", _end_ - _start_);
-    } else {
-        debug_puzzle(puzzle);
-    }
+    debug_puzzle(puzzle);
     exit(EXIT_SUCCESS);
 }
