@@ -1,16 +1,20 @@
 ////////////////////////////////////////////////////////////
 //// Includes
 ////////////////////////////////////////////////////////////
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <mpi.h>
+#include <math.h>
+
 
 ////////////////////////////////////////////////////////////
 //// Structures
 ////////////////////////////////////////////////////////////
 struct Puzzle {
 	int root_n;
+	int depth;
 	int n;
 	int ** matrix;
 };
@@ -28,14 +32,37 @@ typedef int bool;
 ////////////////////////////////////////////////////////////
 #define false 0
 #define true 1
+// get the size of elements on an array
+#define NELEMS(x)  (sizeof(x) / sizeof((x)[0]))
 
 
 ////////////////////////////////////////////////////////////
 //// Global Variables
 ////////////////////////////////////////////////////////////
-static double _start_;
-static double _end_;
+static double _secs_;
+static int _offset_ = 10;
+static bool _time_flag_ = false;
+static bool _time_only_flag_ = false;
+static int _tasks_in_process_ = 0;
 static int _states_searched_ = 0;
+// mpi global variables
+static int _id_; 
+static int _world_size_;
+
+////////////////////////////////////////////////////////////
+//// MPI TAGS
+////////////////////////////////////////////////////////////
+#define START_WORK 0
+#define NO_SOLUTION_FOUND 1
+#define SOLUTION_FOUND 2
+#define STOP_WORK 3
+
+
+////////////////////////////////////////////////////////////
+//// MPI COMM
+////////////////////////////////////////////////////////////
+#define WORLD MPI_COMM_WORLD
+
 
 ////////////////////////////////////////////////////////////
 //// Function Prototypes  
@@ -48,6 +75,8 @@ bool check_row(Puzzle * puzzle, int row, int number);
 bool is_valid(Puzzle * puzzle, int row, int column, int number);
 bool find_empty(Puzzle * puzzle, int * row, int * column);
 bool solve(Puzzle * puzzle);
+Puzzle * copy(Puzzle * puzzle);
+void cleanPuzzle(Puzzle * puzzle);
 void end_on_solution_found(Puzzle * puzzle);
 
 
@@ -56,14 +85,27 @@ void end_on_solution_found(Puzzle * puzzle);
 ////////////////////////////////////////////////////////////
 
 /**
- * Serial Sudoku Solver.
+ * Parallel Sudoku Solver using OpenMP
  *
  * @param argc Number of command line arguments.
  * @param argv Array of command line arguments.
  * @return Returns EXIT_SUCCESS on finishing the execution successful.
  */
 int main(int argc, char *argv[]){
+
+
+    // init mpi
+    MPI_Init (&argc, &argv);
+
+
+    MPI_Comm_rank (MPI_COMM_WORLD, &_id_);
+    MPI_Comm_size (MPI_COMM_WORLD, &_world_size_);
+
+    // not considereing the timinig of mpi initialization
+    MPI_Barrier (MPI_COMM_WORLD);
+
     // starts counter
+	_secs_ = - MPI_Wtime();
 
 	FILE * file_input;
 	FILE * file_output;
@@ -71,16 +113,28 @@ int main(int argc, char *argv[]){
 	char * filename;
 
 	// Check if file path was passed as an argument
-	if (argc > 2){
+	if (argc > 4){
 		printf("ERROR: Too many arguments.\n");
+        fflush(stdout);
 		exit(EXIT_FAILURE);
-	} 
+	} else if (argc < 2) {
+		printf("ERROR: Missing arguments.\n");
+        fflush(stdout);
+		exit(EXIT_FAILURE);
+	} else if(argc == 3 && strcmp(argv[2], "-to") == 0) {
+        _time_only_flag_ = true;
+    } else if(argc == 3 && strcmp(argv[2], "-t") == 0) {
+        _time_flag_ = true;
+    }  else if(argc > 3 && (strcmp(argv[2], "-to") == 0 || strcmp(argv[3], "-to") == 0)) {
+        _time_only_flag_ = true;
+    } 
 
 	filename = argv[1];
 
 	// Open file in read mode
-	if ((file_input = fopen(filename, "r")) == NULL){
-		printf("ERROR: Could not open file %s\n", filename);
+	if ((file_input = fopen(filename,"r")) == NULL){
+		printf("ERROR: Could not open file %s\n",filename);
+        fflush(stdout);
 		exit(EXIT_FAILURE);
 	}
 
@@ -101,62 +155,53 @@ int main(int argc, char *argv[]){
 	Puzzle * puzzle = malloc(sizeof(Puzzle));
 	puzzle->n = n;
 	puzzle->root_n = root_n;
-
+	puzzle->depth = 1;
 	puzzle->matrix = (int**) malloc(n * sizeof(int*));
-	int i;
+    int i;
 	for (i = 0; i < n; ++i){
 		puzzle->matrix[i] = (int * )malloc(n * sizeof(int));
 	}
 
-
 	// Read matrix from the file
 	int cursor;
-	int row = 0, col = 0;
-	int j;
+	int row = 0, col = 0, j;
 	for (i = 0; i < n; ++i){
+		
 		for (j = 0; j < n; ++j){
-			fscanf(file_input, "%d", &puzzle->matrix[i][j]);
+			fscanf(file_input,"%d",&puzzle->matrix[i][j]);
 		}
-    		fscanf(file_input, "\n");
+		fscanf(file_input, "\n");
 	}
 	// ======================================
 
 	// Close file
 	fclose(file_input);
-	
-	if(solve(puzzle)){
 
-		/* Write solution to .out file. */
-		char * name_out;
-		
-		// Split file name
-		filename[strlen(filename) - 3 ] = '\0';
-		name_out = (char *) malloc(sizeof(char) * (strlen(filename) + 4));
-		strcpy(name_out, filename);
-		strcat(name_out, ".out");
 
-		// Open file in write mode
-		file_output = fopen(name_out, "w");
-        // output puzzle to file
-		print_puzzle_to_file(file_output, puzzle);
-		// Close output file
-		fclose(file_output);
-    
-        end_on_solution_found(puzzle);
+    //////////////////////////////////////////////////////////
+    ////// START
+    //////////////////////////////////////////////////////////
 
-	} else {
-		printf("No solution\n");
-	}
 
-    // ======================================
-    /** Free puzzle memory */
-	for (i = 0; i <  n ; ++i){
-		free(puzzle->matrix[i]);
-	}
-	free(puzzle->matrix);
-	free(puzzle);
-    // ======================================
-    
+// send something to somewhere?
+
+    if(!solve(puzzle)){
+        // if no solution was found
+        _secs_ += MPI_Wtime();
+        if (_time_only_flag_) {
+            printf("Elapsed time: %12.6f (s)\n", _secs_);
+        } else if (_time_flag_) {
+            printf("No solution\n");
+            printf("Searched %d states in total.\n", _states_searched_);
+            printf("Elapsed time: %12.6f (s)\n", _secs_);
+        } else {
+            printf("No solution\n");
+        }
+        fflush(stdout);
+    }
+
+    MPI_Finalize();
+
 	return EXIT_SUCCESS;
 }
 
@@ -172,8 +217,10 @@ void debug_puzzle(Puzzle * puzzle){
         for (i = 0; i < n; ++i){
             for (j = 0; j < n; ++j){
                 printf("%d ", puzzle->matrix[i][j]);
+                fflush(stdout);
             }
             printf("\n");
+            fflush(stdout);
         }
     }
 }
@@ -190,8 +237,10 @@ void print_puzzle_to_file(FILE * file, Puzzle * puzzle){
 	for (i = 0; i < n; ++i){
 		for (j = 0; j < n; ++j){
 			fprintf(file, "%d ", puzzle->matrix[i][j]);
+            fflush(stdout);
 		}
 		fprintf(file, "\n");
+        fflush(stdout);
 	}
 }
 
@@ -206,14 +255,14 @@ void print_puzzle_to_file(FILE * file, Puzzle * puzzle){
  */
 bool check_grid(Puzzle * puzzle, int row, int column, int number){
     int i, j;
-	for (i = 0; i < puzzle->root_n; ++i){
-		for (j = 0; j < puzzle->root_n; ++j){
-			if (puzzle->matrix[i + row][j + column] == number){
-				return true;
-			}
-		}
-	}
-	return false;
+    for (i = 0; i < puzzle->root_n; ++i){
+        for (j = 0; j < puzzle->root_n; ++j){
+            if (puzzle->matrix[i + row][j + column] == number){
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /**
@@ -226,12 +275,12 @@ bool check_grid(Puzzle * puzzle, int row, int column, int number){
  */
 bool check_column(Puzzle * puzzle, int column, int number){
     int i;
-	for (i = 0; i < puzzle->n; i++){
-		if(puzzle->matrix[i][column] == number){
-			return true;
-		}
-	}
-	return false;
+    for (i = 0; i < puzzle->n; ++i){
+        if(puzzle->matrix[i][column] == number){
+                return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -243,13 +292,13 @@ bool check_column(Puzzle * puzzle, int column, int number){
  * @return Returns true if the number is in the row.
  */
 bool check_row(Puzzle * puzzle, int row, int number){
-	int i;
+    int i;
     for (i = 0; i < puzzle->n; ++i){
-		if (puzzle->matrix[row][i] == number){
-			return true;
-		}
-	}
-	return false;
+        if (puzzle->matrix[row][i] == number){
+            return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -262,9 +311,9 @@ bool check_row(Puzzle * puzzle, int row, int number){
  * @return Returns true if the number is not valid.
  */
 bool is_valid(Puzzle * puzzle, int row, int column, int number){
-	return !(check_row(puzzle, row, number)) && 
-		   !(check_column(puzzle, column, number)) && 
-		   !(check_grid(puzzle, row - row % puzzle->root_n, column - column % puzzle->root_n, number));
+    return !(check_row(puzzle, row, number)) && 
+           !(check_column(puzzle, column, number)) && 
+           !(check_grid(puzzle, row - row % puzzle->root_n, column - column % puzzle->root_n, number));
 }
 
 /**
@@ -276,14 +325,78 @@ bool is_valid(Puzzle * puzzle, int row, int column, int number){
  * @return Returns true if the puzzle has an empty position.
  */
 bool find_empty(Puzzle * puzzle, int * row, int * column){
-	for (*row = 0; *row < puzzle->n; (*row)++){
-		for (*column = 0; *column < puzzle->n; (*column)++){
-			if (puzzle->matrix[*row][*column] == 0){
-				return true;
-			}
+    for (*row = 0; *row < puzzle->n; (*row)++){
+        for (*column = 0; *column < puzzle->n; (*column)++){
+            if (puzzle->matrix[*row][*column] == 0){
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+
+bool solve(Puzzle * puzzle) {
+    int availableProcesses = _world_size_;
+    //MPI_Request requests[puzzle->n];
+    //MPI_Status statuses[puzzle->n];
+    MPI_Status status;
+
+
+    _states_searched_ ++;
+    int row = 0, col = 0;
+    int depth = puzzle->depth;
+
+	// Check if puzzle is complete
+	if (!find_empty(puzzle, &row, &col)){
+		return true;
+	}
+    
+
+
+    /////////// colocar uma condicao while usando a variable availableprocesses, para apenas enviar trabalho quando existirem processos disponiveis
+    
+    int i;
+	for (i = 1; i <= puzzle->n; ++i){
+
+		// Check if number can be placed in a cell
+		if (is_valid(puzzle, row, col, i)){
+			puzzle->matrix[row][col] = i;
+            puzzle->depth = depth + 1;
+            /*
+                if master send i
+                if slave receive i and solve it, only the slave will solve it, not the master
+            */
+            // If is the MASTER, id = 0
+            if(!_id_) {
+                printf("Sending %d to process %d\n", i, 1);
+                fflush(stdout);
+                MPI_Send(&i, 1, MPI_INT, 1, START_WORK, WORLD);
+                availableProcesses--;
+
+
+                // receive message: found solution
+                MPI_Recv(&i, 1, MPI_INT, 1, SOLUTION_FOUND, WORLD, &status);
+                availableProcesses++;
+                printf("Receiving from process %d - SOLUTION FOUND\n", _id_);
+                fflush(stdout);
+
+                //wait for a complete or a no solution
+            } else {
+                printf("Receiving %d from process %d\n", i, 0);
+                fflush(stdout);
+                MPI_Recv(&i, 1, MPI_INT, _id_-1, START_WORK, WORLD, &status);
+                if (solve_aux(puzzle)){
+                    end_on_solution_found(puzzle);
+                }
+                // the value on the position didn't reach the solution, so change it to zero
+			    puzzle->matrix[row][col] = 0;
+            }
 		}
 	}
+
 	return false;
+
 }
 
 /**
@@ -292,35 +405,81 @@ bool find_empty(Puzzle * puzzle, int * row, int * column){
  * @param puzzle Sudoku puzzle data structure.
  * @return Returns true if the sudoku has a solution.
  */
-bool solve(Puzzle * puzzle){
+bool solve_aux(Puzzle * puzzle) {
     _states_searched_ ++;
-	int i, row = 0, column = 0;
+    int row = 0, col = 0;
+    int depth = puzzle->depth;
 
 	// Check if puzzle is complete
-	if (!find_empty(puzzle, &row, &column)){
-        // solution found
+	if (!find_empty(puzzle, &row, &col)){
 		return true;
 	}
-
-    // Iterate over the N cells of a sudoku puzzle
+    
+    int i;
 	for (i = 1; i <= puzzle->n; ++i){
 
 		// Check if number can be placed in a cell
-		if (is_valid(puzzle, row, column, i)){
-			puzzle->matrix[row][column] = i;
-
-            // call solve with the new value on the sudoku puzzle
-			if (solve(puzzle)){
-                // solution found
-				return true;
-			}
-
-            // if the change didn't led to a solution set it to zero to be changed by other value
-			puzzle->matrix[row][column] = 0;
+		if (is_valid(puzzle, row, col, i)){
+			puzzle->matrix[row][col] = i;
+            puzzle->depth = depth + 1;
+            if (solve_aux(puzzle)){
+                // slave found a solution - inform master
+                MPI_Send(&i, 1, MPI_INT, 0, SOLUTION_FOUND, WORLD);
+                end_on_solution_found(puzzle);
+            }
+            
+            // the value on the position didn't reach the solution, so change it to zero
+			puzzle->matrix[row][col] = 0;
 		}
 	}
-    // no solution found
+
 	return false;
+
+}
+
+/**
+ * Creates a new puzzle based on a puzzle received as argument.
+ * 
+ * @param Puzzle Sudoku puzzle data structure to copy. 
+ * @return Returns a puzzle data data structure if the puzzle received
+ * is not NULL if it is NULL then returns NULL.
+ */
+Puzzle * copy(Puzzle * puzzle) {
+    if (puzzle == NULL) {
+        return NULL;
+    }
+    Puzzle * copy_puzzle = malloc(sizeof(Puzzle));
+    copy_puzzle->root_n = puzzle->root_n;
+    copy_puzzle->n = puzzle->n;
+    copy_puzzle->depth = puzzle->depth;
+    copy_puzzle->matrix = (int**) malloc(puzzle->n * sizeof(int*));          // alloc space for matrix
+    int i,j;
+    // manual copy
+    for (i = 0; i < puzzle->n; ++i){
+        copy_puzzle->matrix[i] = (int * )malloc(puzzle->n * sizeof(int));    // alloc space
+        for (j = 0; j < puzzle->n; ++j){
+            copy_puzzle->matrix[i][j] = puzzle->matrix[i][j];                // copy values
+        }
+    }
+    return copy_puzzle;
+}
+
+/**
+ * Free's a Sudoku puzzle structure.
+ * 
+ * @param puzzle Sudoku puzzle data structure.
+ */
+void cleanPuzzle (Puzzle * puzzle) {
+    if (puzzle != NULL) {
+        int n = puzzle->n;
+        int i;
+        // Free memory   
+        for (i = 0; i <  n ; i++){
+            free(puzzle->matrix[i]);
+        }
+        free(puzzle->matrix);
+        free(puzzle);
+    }
 }
 
 /**
@@ -329,6 +488,19 @@ bool solve(Puzzle * puzzle){
  * @param puzzle Sudoku puzzle data structure.
  */
 void end_on_solution_found(Puzzle * puzzle) {
-    debug_puzzle(puzzle);
+    _secs_ += MPI_Wtime();
+    if (_time_only_flag_) {
+        printf("Elapsed time: %12.6f (s)\n", _secs_);
+    } else if (_time_flag_) {
+        debug_puzzle(puzzle);
+        printf("Searched %d states in total.\n", _states_searched_);
+        printf("Elapsed time: %12.6f (s)\n", _secs_);
+    } else {
+        debug_puzzle(puzzle);
+    }
+    fflush(stdout);
+
+    
+    MPI_Finalize();
     exit(EXIT_SUCCESS);
 }
