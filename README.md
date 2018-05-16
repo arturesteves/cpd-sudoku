@@ -3,6 +3,20 @@ This project presents two different implementations of a Sudoku Solver.
 The solvers are implemented in C language, one version is serial and the other is parallel and uses OpenMP.
 	
 ## Usage
+
+### MPI Implementation
+This information is assuming the use of the IST cluster.  
+Compile:  
+```
+$ cd project
+$ ./compile.sh
+```
+Execute:  
+```
+$ cd project
+$ ./execute.sh cpd-1,cpd-2 input/9x9.in -t
+```
+
 All the commands should be executed on the root directory of the project.  
 ### Serial Implementation
 
