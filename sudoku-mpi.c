@@ -8,6 +8,8 @@
 #include <mpi.h>
 #include <math.h>
 
+#include <unistd.h>
+
 
 ////////////////////////////////////////////////////////////
 //// Structures
@@ -39,13 +41,12 @@ typedef int bool;
 ////////////////////////////////////////////////////////////
 //// Global Variables
 ////////////////////////////////////////////////////////////
-static double _secs_;
 static int _offset_ = 10;
 static bool _time_flag_ = false;
 static bool _time_only_flag_ = false;
 static int _tasks_in_process_ = 0;
 static int _states_searched_ = 0;
-
+static bool _order_stop_working_ = false;
 
 ////////////////////////////////////////////////////////////
 //// MPI TAGS
@@ -75,18 +76,15 @@ bool find_empty(Puzzle * puzzle, int * row, int * column);
 bool solve(Puzzle * puzzle);
 Puzzle * copy(Puzzle * puzzle);
 void cleanPuzzle(Puzzle * puzzle);
-void end_on_solution_found(Puzzle * puzzle);
-void on_solution_found(int size, int ** matrix);
+void end_on_solution_found(Puzzle * puzzle, double secs);
+void on_solution_found(int size, int ** matrix, double secs);
 void debug_matrix(int size, int ** matrix);
-
 void master(int argc, char *argv[]);
 void slave();
-
-int * toMatrix1D (int ** matrix);
-int ** toMatrix2D (int * matrix, int n);
-
+int * toMatrix1D (int ** matrix, int n);
+int ** toMatrix2D (int * matrix, int n);«
 void free1DMatrix(int * matrix);
-void free2DMatrix(int ** matrix);
+void free2DMatrix(int ** matrix, int n);
 
 
 ////////////////////////////////////////////////////////////
@@ -125,31 +123,27 @@ int main(int argc, char *argv[]){
     // wait for all processes to init
     MPI_Barrier (WORLD);
 
-    // starts counter
-	_secs_ = - MPI_Wtime();
-
     if(rank == 0) {
-        printf("master\n");
-        fflush(stdout);
         master(argc, argv);
     } else {
-        printf("slave with id: %d\n", rank);
-        fflush(stdout);
         slave();
     }
+
     printf("ENDING process %d...\n", rank);
     fflush(stdout);
-
     // wait for all processes to reach this point - crucial
     MPI_Barrier(WORLD);
     printf("FINAL BARRIER\n");
     fflush(stdout);
     MPI_Finalize();
     printf("EXIT_SUCESS\n");
+    fflush(stdout);
     return EXIT_SUCCESS;
 }
 
 void master(int argc, char *argv[]) {
+    // starts counter
+	double secs = - MPI_Wtime();
     int availableProcesses;
     MPI_Comm_size (WORLD, &availableProcesses);
 
@@ -195,7 +189,7 @@ void master(int argc, char *argv[]) {
 	// Read matrix from the file
 	int cursor;
 	int row = 0, col = 0, j;
-	for (i = 0; i < n; ++i){
+	for (i = 0; i < n; ++i){    
 		
 		for (j = 0; j < n; ++j){
 			fscanf(file_input,"%d",&puzzle->matrix[i][j]);
@@ -210,25 +204,36 @@ void master(int argc, char *argv[]) {
     //////////////////////////////////////////////////////////
     ////// START
     //////////////////////////////////////////////////////////
-    int * matrix_aux = toMatrix1D(puzzle->matrix);
-    printf("master converted matrix aux\n");
-    fflush(stdout);
-    printf("Number of available processes: %d\n", availableProcesses - 1);
-    fflush(stdout);
+
+    int * matrix_aux = toMatrix1D(puzzle->matrix, n);
     int k;
     for (k = 1; k < availableProcesses; k++) {
         printf("Sending to process %d\n", k);
         fflush(stdout);
-        MPI_Ssend(matrix_aux, n * n, MPI_INT, k, START_WORK, WORLD);
+        MPI_Send(matrix_aux, n * n, MPI_INT, k, START_WORK, WORLD);
         
     }
-    // enquanto existir processos a trabalhar ou enquanto nao for encontrada uma solucao fico a escuta de novas mensanges
 
+    /* // test termination of processes
+    printf("slepping 1 s\n");
+    fflush(stdout);
+    printf("woke up \n");
+    fflush(stdout);
+    for (k = 1; k < availableProcesses; k++) {
+        printf("Sending stop work to process %d\n", k);
+        fflush(stdout);
+        MPI_Send(&k, 1, MPI_INT, k, STOP_WORK, WORLD);
+    }
+    printf("All slaves should be terminating..\n");
+    fflush(stdout);
+    */
+
+
+    // enquanto existir processos a trabalhar ou enquanto nao for encontrada uma solucao fico a escuta de novas mensanges
 
     MPI_Status status;
     int size;
     //use probe
-    //MPI_Probe(0, START_WORK, WORLD, &status);
     printf("Master receiving a probe message\n");
     fflush(stdout);
    
@@ -238,11 +243,12 @@ void master(int argc, char *argv[]) {
     if (status.MPI_TAG == NO_SOLUTION_FOUND) {
         // save info related to the work performed
         // send new work to the slave - probably need to ask a slave for work, contact one at a time, ou entao varios e o mais rapido e que vai ter o trabvalho distribuido
-        printf("Master receiving a no solution message\n");
+        printf("Master received a no solution message\n");
         fflush(stdout);
 
     } else if (status.MPI_TAG == SOLUTION_FOUND) {
-        printf("Master receiving a solution found message\n");
+        secs += MPI_Wtime();
+        printf("Master received a solution found message from process\n");
         fflush(stdout);
         MPI_Get_count(&status, MPI_INT, &size);
         printf("Master solution size: %d\n", size);
@@ -250,7 +256,7 @@ void master(int argc, char *argv[]) {
         int n = (int) sqrt((double)size);
         printf("Master solution n: %d\n", n);
         fflush(stdout);
-        int * matrix_aux_2 = (int *) malloc(size * sizeof(int));
+        int * matrix_aux_2 = malloc(size * sizeof(int));
        
        // no error here
         MPI_Recv(matrix_aux_2, size, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, WORLD, &status);    
@@ -260,19 +266,19 @@ void master(int argc, char *argv[]) {
         fflush(stdout);
         int ** matrix_sol = toMatrix2D(matrix_aux_2, n);
 
-        on_solution_found(n, matrix_sol);
+        on_solution_found(n, matrix_sol, secs);
         // send a termite to all the slaves
         // print the solution 
         
-        /*
+        
         free1DMatrix(matrix_aux_2);
         printf("Master Matrix received memory freed with success\n");
         fflush(stdout);  
 
-        free2DMatrix(matrix_sol);
+        free2DMatrix(matrix_sol, n);
         printf("Master Solution matrix received memory freed with success\n");
         fflush(stdout);  
-        */
+        
     } else {
         //MPI_Recv(&a, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, WORLD, &status);    
         printf("Master receiving a a message with the tag %d\n", status.MPI_TAG);
@@ -296,8 +302,6 @@ void slave() {
     
     MPI_Comm_rank (WORLD, &rank);
 
-    printf("Receiving on process %d\n", rank);
-    fflush(stdout);
     ////////
     // receive initial work 
     ////////
@@ -307,16 +311,8 @@ void slave() {
     MPI_Get_count(&status, MPI_INT, &size);
 
     int n = (int) sqrt((double)size);
-    int * matrix_aux = (int *) malloc(size * sizeof(int));
+    int * matrix_aux = malloc(size * sizeof(int));
     MPI_Recv(matrix_aux, size, MPI_INT, 0, START_WORK, WORLD, &status);    
-    
-    printf("Receiving on process %d, array with size %d\n", rank, size);
-    fflush(stdout);
-
-    printf("end receiving..\n");
-    fflush(stdout);
-    printf("Slave %d solving puzzle\n", rank);
-    fflush(stdout);
 
     // create puzzle
     Puzzle * puzzle = malloc(sizeof(Puzzle));
@@ -325,101 +321,78 @@ void slave() {
 	puzzle->depth = 1;
 	puzzle->matrix = toMatrix2D(matrix_aux, n);
 
+    printf("Slave %d solving puzzle\n", rank);
+    fflush(stdout);
+
+    //sleep(1); // only to test the terminate message
+
+    int flag;
+    MPI_Iprobe(0, STOP_WORK, WORLD, &flag, &status);
+    if(flag) {
+        // this instructions are being executed at every level of the recursion (limitation due to the recursion implementation)
+        printf("SLAVE was order to stop working! - %d\n", puzzle->depth);
+        fflush(stdout);
+        _order_stop_working_ = true;
+    }
 
     if(solve(puzzle)) {
         printf("Slave %d FOUND A SOLUTION\n", rank);
         fflush(stdout);
         // send puzzle
+        int * matrix_solution = toMatrix1D(puzzle->matrix, n);
 
-        printf("Slave %d size '%d' and n '%d'.\n", rank, size, n);
+        MPI_Send(matrix_solution, n * n, MPI_INT, 0, SOLUTION_FOUND, WORLD);
+        printf("Slave %d sent a solution.\n", rank);
         fflush(stdout);   
+     
+        free1DMatrix(matrix_solution);
+        printf("Slave %d Matrix memory freed with success\n", rank);
+        fflush(stdout);
 
-        int * matrix_solution = toMatrix1D(puzzle->matrix);
-
-/// PROBLEM HERE /// -> related with free
-        MPI_Ssend(matrix_solution, n * n, MPI_INT, 0, SOLUTION_FOUND, WORLD);
-        printf("Slave %d sent a solution. NOW is about to free the memory\n", rank);
-        fflush(stdout);   
-
-        cleanPuzzle(puzzle);
-        printf("Slave %d Puzzle memory freed with success\n", rank);
-        fflush(stdout);   
-        free1DMatrix(matrix_aux);
-        printf("Slave %d Matrix received memory freed with success\n", rank);
-        fflush(stdout);   
-/// PROBLEM HERE ///        
-        //free1DMatrix(matrix_solution);
-        //printf("Slave %d Matrix memory freed with success\n", rank);
-        //fflush(stdout);   
-    } else {
+    } else if(!_order_stop_working_) {  // no solution was found and wasn't order to stop
         printf("Slave %d DIDN'T FOUND A SOLUTION\n", rank);
         fflush(stdout);
-/// PROBLEM HERE /// -> related with free        
-        MPI_Ssend(&rank, 1, MPI_INT, 0, NO_SOLUTION_FOUND, WORLD);
+
+        MPI_Send(&rank, 1, MPI_INT, 0, NO_SOLUTION_FOUND, WORLD);
         printf("Slave %d no solution send completed.\n", rank);
-        fflush(stdout); 
+        fflush(stdout);   
     }
 
-    // todo: expect a message, new work or terminate!
-
-/*
     cleanPuzzle(puzzle);
     printf("Slave %d Puzzle memory freed with success\n", rank);
-    fflush(stdout);   
+    fflush(stdout); 
     free1DMatrix(matrix_aux);
     printf("Slave %d Matrix received memory freed with success\n", rank);
-    fflush(stdout);   
-*/
+    fflush(stdout); 
+
 }
 
 
-int * toMatrix1D (int ** matrix) {
-    // size = size of a line
-    int n = sizeof(matrix[0]);
-    int * matrix_aux = (int *) malloc(n * n * sizeof(int));
+int * toMatrix1D (int ** matrix, int n) {
+    int * matrix_aux = malloc(n * n * sizeof(int));
     int i, j, pos = 0;
-    printf("\n TO MATRIX 1D\n");
-    fflush(stdout);
-    printf("SIZE: %d\n", n);
-    fflush(stdout);
-    for (i = 0; i <= n; i++) {
-        for (j = 0; j <= n; j++) {
+    
+    for (i = 0; i < n; i++) {
+        for (j = 0; j < n; j++) {
             matrix_aux[pos] = matrix[i][j];
-            printf("%d ", matrix_aux[pos]);
-            fflush(stdout);
             pos++;
         }
-        printf("\n");
-        fflush(stdout);
     }
-    printf("\n\n");
-    fflush(stdout);
-
+    
     return matrix_aux;
-
-    //int * puzzle;
-    //puzzle = (int *) malloc (n * sizeof(int));   diferença? malloc (n * sizeof(int))
 }
 
 int ** toMatrix2D (int * matrix, int n) {
-    int ** matrix_aux = (int**) malloc(n * sizeof(int*));
+    int ** matrix_aux = malloc(n * sizeof(int*));
     int i, j, pos, k;
-    printf("\n TO MATRIX 2D\n");
-    fflush(stdout);
-    printf("SIZE: %d\n", n);
-    fflush(stdout);
     for (k = 0; k < n; k++){
-		matrix_aux[k] = (int * )malloc(n * sizeof(int));
+		matrix_aux[k] = malloc(n * sizeof(int));
 	}
 
     for (i = 0; i < n; i++) {
         for (j = 0; j < n; j++) {
             matrix_aux[i][j] = matrix[pos++];
-            printf("%d ", matrix_aux[i][j]);
-            fflush(stdout);
         }
-        printf("\n");
-        fflush(stdout);
     }
 
     return matrix_aux;
@@ -429,8 +402,7 @@ void free1DMatrix(int * matrix) {
     free(matrix);
 }
 
-void free2DMatrix(int ** matrix) {
-    int n = sizeof(matrix[0]);
+void free2DMatrix(int ** matrix, int n) {
     int i;
     for (i = 0; i < n; i++){
         free(matrix[i]);
@@ -446,6 +418,10 @@ void free2DMatrix(int ** matrix) {
  * @return Returns true if the sudoku has a solution.
  */
 bool solve(Puzzle * puzzle){
+    if(_order_stop_working_) {
+        return false;
+    }
+    
     _states_searched_ ++;
 	int i, row = 0, column = 0;
 
@@ -461,7 +437,7 @@ bool solve(Puzzle * puzzle){
 		// Check if number can be placed in a cell
 		if (is_valid(puzzle, row, column, i)){
 			puzzle->matrix[row][column] = i;
-
+            puzzle->depth++;
             // call solve with the new value on the sudoku puzzle
 			if (solve(puzzle)){
                 // solution found
@@ -656,14 +632,13 @@ void cleanPuzzle (Puzzle * puzzle) {
  * 
  * @param puzzle Sudoku puzzle data structure.
  */
-void end_on_solution_found(Puzzle * puzzle) {
-    _secs_ += MPI_Wtime();
+void end_on_solution_found(Puzzle * puzzle, double secs) {
     if (_time_only_flag_) {
-        printf("Elapsed time: %12.6f (s)\n", _secs_);
+        printf("Elapsed time: %12.6f (s)\n", secs);
     } else if (_time_flag_) {
         debug_puzzle(puzzle);
         printf("Searched %d states in total.\n", _states_searched_);
-        printf("Elapsed time: %12.6f (s)\n", _secs_);
+        printf("Elapsed time: %12.6f (s)\n", secs);
     } else {
         debug_puzzle(puzzle);
     }
@@ -678,14 +653,13 @@ void end_on_solution_found(Puzzle * puzzle) {
 
 
 
-void on_solution_found(int size, int ** matrix) {
-    _secs_ += MPI_Wtime();
+void on_solution_found(int size, int ** matrix, double secs) {
     if (_time_only_flag_) {
-        printf("Elapsed time: %12.6f (s)\n", _secs_);
+        printf("Elapsed time: %12.6f (s)\n", secs);
     } else if (_time_flag_) {
         debug_matrix(size, matrix);
         printf("Searched %d states in total.\n", _states_searched_);
-        printf("Elapsed time: %12.6f (s)\n", _secs_);
+        printf("Elapsed time: %12.6f (s)\n", secs);
     } else {
         debug_matrix(size, matrix);
     }
