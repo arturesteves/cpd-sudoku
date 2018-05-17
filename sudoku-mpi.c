@@ -219,44 +219,73 @@ void master(int argc, char *argv[]) {
     for (k = 1; k < availableProcesses; k++) {
         printf("Sending to process %d\n", k);
         fflush(stdout);
-        //MPI_Send(&matrix_aux, n, MPI_INT, k, START_WORK, WORLD);
-        MPI_Send(matrix_aux, n * n, MPI_INT, k, START_WORK, WORLD);
+        MPI_Ssend(matrix_aux, n * n, MPI_INT, k, START_WORK, WORLD);
         
     }
     // enquanto existir processos a trabalhar ou enquanto nao for encontrada uma solucao fico a escuta de novas mensanges
-    
 
 
-
-    /////////////// NOT WORKING YET
     MPI_Status status;
     int size;
     //use probe
     //MPI_Probe(0, START_WORK, WORLD, &status);
-    MPI_Probe(0, MPI_ANY_TAG, WORLD, &status);
-    MPI_Get_count(&status, MPI_INT, &size);
+    printf("Master receiving a probe message\n");
+    fflush(stdout);
+   
+    MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, WORLD, &status);
+    printf("Master recived a probe message from process %d\n", status.MPI_SOURCE);
+    fflush(stdout);
     if (status.MPI_TAG == NO_SOLUTION_FOUND) {
         // save info related to the work performed
         // send new work to the slave - probably need to ask a slave for work, contact one at a time, ou entao varios e o mais rapido e que vai ter o trabvalho distribuido
         printf("Master receiving a no solution message\n");
         fflush(stdout);
+
     } else if (status.MPI_TAG == SOLUTION_FOUND) {
         printf("Master receiving a solution found message\n");
         fflush(stdout);
+        MPI_Get_count(&status, MPI_INT, &size);
+        printf("Master solution size: %d\n", size);
+        fflush(stdout);
         int n = (int) sqrt((double)size);
-        int * matrix_aux = (int *) malloc(size * sizeof(int));
-        MPI_Recv(matrix_aux, size, MPI_INT, 0, START_WORK, WORLD, &status);    
-        on_solution_found(n, toMatrix2D(matrix_aux, n));
+        printf("Master solution n: %d\n", n);
+        fflush(stdout);
+        int * matrix_aux_2 = (int *) malloc(size * sizeof(int));
+       
+       // no error here
+        MPI_Recv(matrix_aux_2, size, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, WORLD, &status);    
+        printf("Master solution recv completed!\n");
+        fflush(stdout);
+        printf("Master solution 1st element: %d\n", matrix_aux_2[0]);
+        fflush(stdout);
+        int ** matrix_sol = toMatrix2D(matrix_aux_2, n);
+
+        on_solution_found(n, matrix_sol);
         // send a termite to all the slaves
-        // print the solution
+        // print the solution 
         
+        /*
+        free1DMatrix(matrix_aux_2);
+        printf("Master Matrix received memory freed with success\n");
+        fflush(stdout);  
+
+        free2DMatrix(matrix_sol);
+        printf("Master Solution matrix received memory freed with success\n");
+        fflush(stdout);  
+        */
     } else {
+        //MPI_Recv(&a, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, WORLD, &status);    
         printf("Master receiving a a message with the tag %d\n", status.MPI_TAG);
         fflush(stdout);
     }
-    
 
-    //free1DMatrix(matrix_aux);
+
+    cleanPuzzle(puzzle);
+    printf("Master Puzzle memory freed with success\n");
+    fflush(stdout);   
+    free1DMatrix(matrix_aux);
+    printf("Master Matrix received memory freed with success\n");
+    fflush(stdout);   
 
 
 }
@@ -287,7 +316,8 @@ void slave() {
     printf("end receiving..\n");
     fflush(stdout);
     printf("Slave %d solving puzzle\n", rank);
-    
+    fflush(stdout);
+
     // create puzzle
     Puzzle * puzzle = malloc(sizeof(Puzzle));
 	puzzle->n = n;
@@ -295,22 +325,51 @@ void slave() {
 	puzzle->depth = 1;
 	puzzle->matrix = toMatrix2D(matrix_aux, n);
 
+
     if(solve(puzzle)) {
         printf("Slave %d FOUND A SOLUTION\n", rank);
+        fflush(stdout);
         // send puzzle
+
+        printf("Slave %d size '%d' and n '%d'.\n", rank, size, n);
+        fflush(stdout);   
+
         int * matrix_solution = toMatrix1D(puzzle->matrix);
-        MPI_Send(matrix_solution, n * n, MPI_INT, 0, SOLUTION_FOUND, WORLD);
+
+/// PROBLEM HERE /// -> related with free
+        MPI_Ssend(matrix_solution, n * n, MPI_INT, 0, SOLUTION_FOUND, WORLD);
+        printf("Slave %d sent a solution. NOW is about to free the memory\n", rank);
+        fflush(stdout);   
+
+        cleanPuzzle(puzzle);
+        printf("Slave %d Puzzle memory freed with success\n", rank);
+        fflush(stdout);   
+        free1DMatrix(matrix_aux);
+        printf("Slave %d Matrix received memory freed with success\n", rank);
+        fflush(stdout);   
+/// PROBLEM HERE ///        
+        //free1DMatrix(matrix_solution);
+        //printf("Slave %d Matrix memory freed with success\n", rank);
+        //fflush(stdout);   
     } else {
         printf("Slave %d DIDN'T FOUND A SOLUTION\n", rank);
-        MPI_Send(0, 1, MPI_INT, 0, NO_SOLUTION_FOUND, WORLD);
+        fflush(stdout);
+/// PROBLEM HERE /// -> related with free        
+        MPI_Ssend(&rank, 1, MPI_INT, 0, NO_SOLUTION_FOUND, WORLD);
+        printf("Slave %d no solution send completed.\n", rank);
+        fflush(stdout); 
     }
 
     // todo: expect a message, new work or terminate!
 
-
-    //free1DMatrix(matrix_aux);
-    //free2DMatrix(matrix);
-    
+/*
+    cleanPuzzle(puzzle);
+    printf("Slave %d Puzzle memory freed with success\n", rank);
+    fflush(stdout);   
+    free1DMatrix(matrix_aux);
+    printf("Slave %d Matrix received memory freed with success\n", rank);
+    fflush(stdout);   
+*/
 }
 
 
@@ -372,10 +431,10 @@ void free1DMatrix(int * matrix) {
 
 void free2DMatrix(int ** matrix) {
     int n = sizeof(matrix[0]);
-    /*int i;
+    int i;
     for (i = 0; i < n; i++){
         free(matrix[i]);
-    }*/
+    }
     free(matrix);
 }
 
